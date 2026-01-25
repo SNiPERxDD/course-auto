@@ -8,6 +8,11 @@ Contributions are welcome. This project follows a high-precision "Doctrine" for 
 2.  **No Fluff**: Keep documentation technical and precise.
 3.  **Cross-Platform**: Ensure changes work on both macOS and Windows (or handle fallbacks gracefully).
 
+## Issue Reporting
+
+*   **Bugs:** Open an issue with the "Bug" label. Include reproduction steps and `coursera_stealth.py` logs.
+*   **Features:** Open an issue with the "Enhancement" label. Describe the use case and expected behavior.
+
 ## Pull Requests
 
 1.  Fork the repository.
