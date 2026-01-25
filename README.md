@@ -31,7 +31,11 @@ The system requires an initialized debugging interface on the host browser.
 
 **Windows (PowerShell Recommended):**
 ```powershell
-# 1. Create a virtual environment (keeps your system python clean)
+# 1. Clone the repository
+git clone https://github.com/SNiPERxDD/course-auto.git
+cd course-auto
+
+# 2. Create a virtual environment (keeps your system python clean)
 python -m venv .venv
 
 # 2. Allow script execution for this session (fixes "disabled by your system" errors)
