@@ -34,6 +34,13 @@ def check_and_handle_modal(page):
              print("\n   └── 🗳️ Poll detected. Skipping...")
              page.locator("button:has-text('Continue'), button:has-text('Submit')").click()
              time.sleep(1)
+
+        # Video "Reflect" / Interrupt
+        # Looks for "Reflect" header or generic modal with Continue during video
+        if page.locator("h1, h2, h3", has_text="Reflect").is_visible():
+             print("\n   └── ⏸️ Video Interrupt (Reflect) detected. Resuming...")
+             page.locator("button:has-text('Continue')").click(force=True)
+             time.sleep(1)
     except: pass
 
 def load_history():
@@ -47,8 +54,12 @@ def load_history():
 def save_history(history_set):
     """Saves the set of visited URLs to JSON."""
     try:
-        with open(HISTORY_FILE, "w") as f: json.dump(list(history_set), f)
-    except: pass
+        with open(HISTORY_FILE, "w") as f: 
+            json.dump(list(history_set), f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+    except Exception as e:
+        print(f"⚠️ History Save Error: {e}")
 
 def save_content_smart(filepath, new_content):
     """Saves content, verifying correlation (>95%) to avoid overwriting distinct content."""
@@ -565,6 +576,9 @@ def handle_automation():
                     if get_page_context(page) != start_context:
                         print("\n🛑 User navigated away! Aborting video match.")
                         break
+
+                    # Check for "Reflect" or other Modals blocking playback
+                    check_and_handle_modal(page)
 
                     # Monitor Progress & Completion
                     try:
