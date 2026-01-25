@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [1.0.1] - 2026-01-25
 ### 🛠 Fixes
 - **Video Failsafe**: Added 30-second pause timeout to force-resume videos stuck in buffering or paused states.
+- **Log Spam Fix**: Added URL-based stuck detection (`stuck_on_item_counter`) to quietly exit when the course is finished.
 
 ## [1.0.0] - 2026-01-25
 

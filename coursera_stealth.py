@@ -322,26 +322,50 @@ def handle_automation():
 
         print("👀 Monitoring for content...")
         last_log = ""
+        last_action_log = "" # Tracks specific action states (VIDEO, READING, etc)
         visited_urls = load_history()
+        
+        # Stuck Counter to prevent End-of-Course Spam
+        stuck_on_item_counter = 0
+        last_processed_url = ""
 
         while True:
+            # STUCK DETECTION LOGIC (URL BASED)
+            # Checked OUTSIDE the Try-Except block so sys.exit() works!
+            try:
+                current_url_check = page.url.split('?')[0].split('#')[0]
+                
+                if current_url_check == last_processed_url:
+                    stuck_on_item_counter += 1
+                else:
+                    stuck_on_item_counter = 0
+                    last_processed_url = current_url_check
+
+                if stuck_on_item_counter > 5: # ~5 loops without URL change
+                     print("\n🛑 End of Course or Stuck detected (No Next Item).")
+                     print("   └── Script exiting quietly to prevent log spam.")
+                     sys.exit(0)
+            except SystemExit: raise # Re-raise exit
+            except: pass # Ignore other errors accessing page.url
+
             # 1. Context Logging
             try:
                 current_context = get_page_context(page)
                 if current_context != last_log:
                     print(f"\n{current_context}")
                     last_log = current_context
-                    
+                    last_action_log = "" # Reset action log on new context
+                     
                 # 0. History Check (State Persistence)
                 # If we have fully completed this URL before, we can skip logic or fast-track.
                 # However, user might want to re-watch. We will log it.
                 current_url = page.url.split('?')[0].split('#')[0] # Normalize: Remove query params and hash
                 
                 if current_url in visited_urls:
-                     if "ALREADY_VISITED" not in last_log:
+                     if "ALREADY_VISITED" not in last_action_log:
                          print("   └── 📜 History: Item already visited/completed.")
-                         # We don't auto-skip immediately here to allow re-verification, 
-                         # but checking completed status will likely be faster.
+                         last_action_log += "ALREADY_VISITED"
+
             except: pass
 
             # 2. Check for Polls
@@ -430,9 +454,9 @@ def handle_automation():
             # --- HANDLERS ---
             
             if is_plugin:
-                 if "PLUGIN" not in last_log:
+                 if "PLUGIN" not in last_action_log:
                      print(f"\n🧩 UNGRADED PLUGIN/RESOURCE DETECTED.")
-                     last_log = "PLUGIN"
+                     last_action_log += "PLUGIN"
                  
                  # Attempt to Mark Complete (Resource) or Next
                  try:
@@ -483,12 +507,12 @@ def handle_automation():
                 except: pass
                 
                 if is_graded:
-                    if "QUIZ" not in last_log:
+                    if "QUIZ" not in last_action_log:
                         print(f"\n🛑 GRADED QUIZ DETECTED.")
                         print("   └── Actions paused. Please solve manually.")
                         try: notification.notify(title="Coursera Bot", message="Graded Quiz detected!")
                         except: pass
-                        last_log = "QUIZ"
+                        last_action_log += "QUIZ"
                     
                     # Pause until cleared
                     while page.locator(".rc-QuizApp, .rc-FormPartsQuestion").count() > 0:
@@ -497,10 +521,10 @@ def handle_automation():
                     continue
                 else:
                     # Non-Graded (Practice/Orientation)
-                    if "SKIP_QUIZ" not in last_log:
+                    if "SKIP_QUIZ" not in last_action_log:
                         print(f"\n⚠️ Non-Graded Quiz Detected (Orientation/Practice).")
                         print("   └── Attempting to Skip/Next...")
-                        last_log = "SKIP_QUIZ"
+                        last_action_log += "SKIP_QUIZ"
                     
                     try:
                         next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
@@ -517,9 +541,9 @@ def handle_automation():
                     continue
 
             elif is_video:
-                if "VIDEO" not in last_log:
+                if "VIDEO" not in last_action_log:
                     print(f"\n🎥 VIDEO DETECTED.")
-                    last_log = "VIDEO"
+                    last_action_log += "VIDEO"
                 
                 # Capture start context for navigation check
                 start_context = get_page_context(page)
@@ -666,9 +690,9 @@ def handle_automation():
 
             elif is_reading:
                 start_context = get_page_context(page)
-                if "READING" not in last_log:
+                if "READING" not in last_action_log:
                     print(f"\n📖 READING DETECTED.")
-                    last_log = "READING"
+                    last_action_log += "READING"
 
                 
                 # A. Time Detection (Targeted)
