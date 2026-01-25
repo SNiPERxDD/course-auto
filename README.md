@@ -77,3 +77,7 @@ Parameters are defined in the global configuration block of `coursera_stealth.py
 ## 6. Disclaimer
 
 This software is a research proof-of-concept for CDP-based automation. It is provided "as is" without warranty. Users assume all liability for its operation and adherence to platform Terms of Service.
+
+## 7. License
+
+Distributed under the MIT License. See `LICENSE` for more information.
