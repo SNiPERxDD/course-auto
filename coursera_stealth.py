@@ -363,6 +363,11 @@ def handle_automation():
                          print("   └── ✅ Marked as Completed.")
                          time.sleep(2)
                      
+                     # Add to history
+                     normalized_url = page.url.split('?')[0].split('#')[0]
+                     visited_urls.add(normalized_url)
+                     save_history(visited_urls)
+                     
                      next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
                      if next_btn.is_visible():
                          next_btn.click(force=True)
@@ -515,6 +520,12 @@ def handle_automation():
                             next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
                             if next_btn.is_visible() and next_btn.is_enabled():
                                 print(f"\n   └── ✅ Video Complete (Button Enabled & >{VIDEO_COMPLETION_THRESHOLD-1}%).")
+                                
+                                # Add to history
+                                normalized_url = page.url.split('?')[0].split('#')[0]
+                                visited_urls.add(normalized_url)
+                                save_history(visited_urls)
+                                
                                 next_btn.click(force=True)
                                 break
                                 
@@ -532,6 +543,11 @@ def handle_automation():
                 try:
                      # Only click if we didn't abort
                      if get_page_context(page) == start_context:
+                         # Add to history (Reading assumed complete if we are moving on)
+                         normalized_url = page.url.split('?')[0].split('#')[0]
+                         visited_urls.add(normalized_url)
+                         save_history(visited_urls)
+                         
                          next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
                          if next_btn.is_visible(): next_btn.click(force=True)
                 except: pass
