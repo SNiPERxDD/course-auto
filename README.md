@@ -1,8 +1,9 @@
 # Coursera Automation Protocol (CDP Implementation)
 
-**Version:** 1.0.0 (Research Prototype)  
-**Architecture:** Chrome DevTools Protocol (CDP) / Python 3  
-**Status:** Experimental
+![Version](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.8%2B-green?style=flat-square)
+![Protocol](https://img.shields.io/badge/protocol-CDP-orange?style=flat-square)
+![Status](https://img.shields.io/badge/status-Research_Prototype-red?style=flat-square)
 
 ## 1. System Overview
 

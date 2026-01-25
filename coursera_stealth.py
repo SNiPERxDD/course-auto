@@ -265,8 +265,8 @@ def handle_automation():
                 # 0. History Check (State Persistence)
                 # If we have fully completed this URL before, we can skip logic or fast-track.
                 # However, user might want to re-watch. We will log it.
-                current_url = page.url
-                # Normalize URL (remove query params if needed, but Coursera uses them for item IDs)
+                current_url = page.url.split('?')[0].split('#')[0] # Normalize: Remove query params and hash
+                
                 if current_url in visited_urls:
                      if "ALREADY_VISITED" not in last_log:
                          print("   └── 📜 History: Item already visited/completed.")
@@ -330,7 +330,9 @@ def handle_automation():
             if (is_video or is_reading or is_plugin) and not is_quiz:
                 if check_completed_status(page):
                      # Add to history since we confirmed it's done
-                     visited_urls.add(page.url)
+                     # Normalize URL
+                     normalized_url = page.url.split('?')[0].split('#')[0]
+                     visited_urls.add(normalized_url)
                      save_history(visited_urls)
                      
                      user_stayed = input_with_timeout(30)
