@@ -337,6 +337,23 @@ def handle_automation():
                      
                      user_stayed = input_with_timeout(30)
                      if not user_stayed:
+                         # Check for Polls/Honor Code before skipping
+                         try:
+                             # Poll/Survey Check
+                             if page.locator("h2", has_text="Demographics Survey").is_visible():
+                                  print("\n   └── 🗳️ Poll detected. Skipping...")
+                                  page.locator("button:has-text('Continue'), button:has-text('Submit')").click()
+                                  time.sleep(2)
+                             
+                             # Honor Code Check (Edge Case)
+                             # Modal with title "Coursera Honor Code" and "Continue" button
+                             if page.locator("h1, h2, h3", has_text="Coursera Honor Code").count() > 0:
+                                  continue_btn = page.locator("button:has-text('Continue')").first
+                                  if continue_btn.is_visible():
+                                      print("\n   └── 🛡️ Honor Code detected. Accepting...")
+                                      continue_btn.click(force=True)
+                                      time.sleep(2)
+                         except: pass
                          # Skip/Navigate
                          print("   └── ⏭️ Skipping...")
                          try:
