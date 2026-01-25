@@ -38,13 +38,13 @@ cd course-auto
 # 2. Create a virtual environment (keeps your system python clean)
 python -m venv .venv
 
-# 2. Allow script execution for this session (fixes "disabled by your system" errors)
+# 3. Allow script execution for this session (fixes "disabled by your system" errors)
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 
-# 3. Activate the environment
+# 4. Activate the environment
 .\.venv\Scripts\Activate.ps1
 
-# 4. Install dependencies
+# 5. Install dependencies
 pip install -r requirements.txt
 playwright install chromium
 ```
