@@ -18,6 +18,24 @@ HISTORY_FILE = "visited_history.json"
 # Suppress Playwright/Node deprecation warnings
 os.environ["NODE_OPTIONS"] = "--no-deprecation"
 
+def check_and_handle_modal(page):
+    """Checks for and handles common modals (Honor Code, Polls) anywhere."""
+    try:
+        # Honor Code
+        if page.locator("h2", has_text="Coursera Honor Code").is_visible() or \
+           page.locator("h1", has_text="Coursera Honor Code").is_visible():
+            print("\n   └── 🛡️ Honor Code detected. Accepting...")
+            # Click Continue (try multiple specific selectors provided by user logic)
+            page.locator("button:has-text('Continue')").click(force=True)
+            time.sleep(1)
+
+        # Demographics Poll
+        if page.locator("h2", has_text="Demographics Survey").is_visible():
+             print("\n   └── 🗳️ Poll detected. Skipping...")
+             page.locator("button:has-text('Continue'), button:has-text('Submit')").click()
+             time.sleep(1)
+    except: pass
+
 def load_history():
     """Loads the set of visited URLs from JSON."""
     if os.path.exists(HISTORY_FILE):
@@ -112,6 +130,9 @@ def random_human_scroll(page, duration_sec, initial_context):
         
         # Direction: Mostly down (85%), occasionally up (15%)
         direction = 1 if random.random() > 0.15 else -1
+        
+        # Check Modals during reading (Honor Code might pop up)
+        check_and_handle_modal(page)
         
         try:
             # Smooth scroll simulation could be better, but we vary the steps
@@ -302,29 +323,39 @@ def handle_automation():
                  if "Quiz" in page.title():
                      is_quiz = True
 
-            # Plugin Detection (e.g. "Ungraded Plugin", "Ungraded External Tool")
+            # Plugin / Assignment Detection
+            # "Ungraded Plugin", "Ungraded External Tool", or "Peer-graded Assignment"
             is_plugin = False
+            is_assignment = False
+            
             try:
                 # Check for "Ungraded Plugin" text in metadata or headers
                 # CRITICAL: Scan 'main' only to avoid sidebar/nav bar matches
                 if page.locator("main", has_text="Ungraded Plugin").count() > 0 or \
                    page.locator("main", has_text="Ungraded External Tool").count() > 0:
                      is_plugin = True
+                
+                # Check for "Peer-graded Assignment" or "Case Study"
+                if "Peer-graded Assignment" in page.title() or "Case Study" in page.title():
+                    is_assignment = True
+                    is_plugin = True # Reuse plugin skip logic for now
             except: pass
 
             # Reading: .reading-title OR data-testid='cml-viewer' OR generic "Reading" pill
-            # CRITICAL: We only check for reading if it is NOT a quiz OR plugin
+            # CRITICAL: We only check for reading if it is NOT a quiz OR plugin OR assignment
             is_reading = False
-            if not is_quiz and not is_video and not is_plugin:
+            if not is_quiz and not is_video and not is_plugin and not is_assignment:
                 is_reading = page.locator(".reading-title, [data-testid='cml-viewer']").count() > 0
                 if not is_reading:
                      # Check for the metadata pill containing "Reading"
                      is_reading = page.locator("div:has-text('Reading')").locator("span:has-text('min')").count() > 0
             
             # Additional safety: If title has Quiz, it's not a reading
-            if "Quiz" in page.title(): 
+            if "Quiz" in page.title() or "Assignment" in page.title(): 
                 is_reading = False
-                is_quiz = True
+                
+            # --- MODAL CHECK BEFORE ACTION ---
+            check_and_handle_modal(page)
 
             # --- CHECK COMPLETION STATUS ---
             if (is_video or is_reading or is_plugin) and not is_quiz:
@@ -337,23 +368,6 @@ def handle_automation():
                      
                      user_stayed = input_with_timeout(30)
                      if not user_stayed:
-                         # Check for Polls/Honor Code before skipping
-                         try:
-                             # Poll/Survey Check
-                             if page.locator("h2", has_text="Demographics Survey").is_visible():
-                                  print("\n   └── 🗳️ Poll detected. Skipping...")
-                                  page.locator("button:has-text('Continue'), button:has-text('Submit')").click()
-                                  time.sleep(2)
-                             
-                             # Honor Code Check (Edge Case)
-                             # Modal with title "Coursera Honor Code" and "Continue" button
-                             if page.locator("h1, h2, h3", has_text="Coursera Honor Code").count() > 0:
-                                  continue_btn = page.locator("button:has-text('Continue')").first
-                                  if continue_btn.is_visible():
-                                      print("\n   └── 🛡️ Honor Code detected. Accepting...")
-                                      continue_btn.click(force=True)
-                                      time.sleep(2)
-                         except: pass
                          # Skip/Navigate
                          print("   └── ⏭️ Skipping...")
                          try:
