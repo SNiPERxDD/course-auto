@@ -235,12 +235,26 @@ def check_completed_status(page):
     return False
 
 def get_filename_prefix(page):
-    """Extracts 'M1', 'M2' etc from the module header."""
+    """Extracts 'M1', 'M2' etc from the module header or title."""
     try:
+        # 1. Priority: Check Page Title (e.g. "Module 2 Overview | Course Name")
+        title_text = page.title()
+        match = re.search(r"Module\s*(\d+)", title_text, re.IGNORECASE)
+        if match:
+             return f"M{match.group(1)}_"
+
+        # 2. Fallback: Breadcrumb/Header
         module_text = page.locator("span.css-6ecy9b").first.inner_text()
         match = re.search(r"MODULE\s*(\d+)", module_text, re.IGNORECASE)
         if match:
             return f"M{match.group(1)}_"
+            
+        # 3. Super Fallback: Check for any "Module X" visible in main content title
+        main_header = page.locator("h1").first.inner_text()
+        match = re.search(r"Module\s*(\d+)", main_header, re.IGNORECASE)
+        if match:
+             return f"M{match.group(1)}_"
+
     except: pass
     return ""
 
