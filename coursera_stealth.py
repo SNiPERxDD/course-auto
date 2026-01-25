@@ -5,6 +5,7 @@ import random
 import sys
 import select
 import difflib
+import json
 from playwright.sync_api import sync_playwright
 from plyer import notification
 
@@ -568,6 +569,7 @@ def handle_automation():
 
                 # C. Wait for Completion (Robust "Next" Check)
                 print("   └── ⏳ Watching video (Waiting for 'Next' button)...")
+                paused_counter = 0
                 
                 # We wait for the "Go to next item" button to be ENABLED and VISIBLE
                 # Or for the video 'ended' even
@@ -579,6 +581,19 @@ def handle_automation():
 
                     # Check for "Reflect" or other Modals blocking playback
                     check_and_handle_modal(page)
+
+                    # --- AUTO-RESUME CHECK ---
+                    try:
+                        is_paused = page.evaluate("document.querySelector('video').paused")
+                        if is_paused:
+                            paused_counter += 1
+                            if paused_counter > 30:
+                                print(f"\n   └── ⚠️ Auto-resume: Video was stuck paused for 30s. Forcing play.")
+                                page.evaluate("document.querySelector('video').play()")
+                                paused_counter = 0
+                        else:
+                            paused_counter = 0
+                    except: pass
 
                     # Monitor Progress & Completion
                     try:
