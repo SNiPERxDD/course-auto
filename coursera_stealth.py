@@ -235,33 +235,51 @@ def check_completed_status(page):
     return False
 
 def get_filename_prefix(page):
-    """Extracts 'M1', 'M2' etc from the active (expanded) sidebar module."""
+    """Extracts 'M1', 'M2' etc from the Module header that CONTAINS the current item."""
     try:
-        # 1. Priority: Check Active Sidebar Accordion (Expanded)
-        # We look for a button/header with "Module" that is expanded.
-        # This is the "User's Source of Truth" - whatever is open in the sidebar.
-        expanded_module = page.locator("button[aria-expanded='true']", has_text="Module").all()
+        # 1. Identify the Current Item in the Sidebar
+        current_title = page.title().split("|")[0].strip()
         
-        for el in expanded_module:
-            text = el.inner_text()
-            match = re.search(r"Module\s*(\d+)", text, re.IGNORECASE)
-            if match:
-                 return f"M{match.group(1)}_"
+        # We find the specific sidebar item that matches our title
+        # using the same strict matching logic as check_completed_status
+        candidates = page.locator(f"div.outline-single-item-content-wrapper", has_text=current_title).all()
+        target_item = None
+        
+        for item in candidates:
+            # Strict verification
+            if item.inner_text().split('\n')[0].strip() == current_title:
+                target_item = item
+                break
+        
+        if target_item:
+            # 2. Traverse Up to find the Module Panel/Region
+            # The item is usually inside a div[role='region'] (the accordion panel)
+            # We want to find the header associated with this panel.
+            
+            # Playwright doesn't have a simple "closest" locator that returns the handle easily in Python API without eval,
+            # but we can try to find the 'closest' parent having "Module" text in its PREVIOUS sibling or header.
+            
+            # Robust Approach: Find the accordion region containing this item
+            region = target_item.locator("xpath=./ancestor::div[@role='region']").first
+            
+            if region.is_visible():
+                region_id = region.get_attribute("id")
+                if region_id:
+                    # Find the button that controls this region
+                    header = page.locator(f"button[aria-controls='{region_id}']").first
+                    if header.is_visible():
+                         header_text = header.inner_text()
+                         match = re.search(r"Module\s*(\d+)", header_text, re.IGNORECASE)
+                         if match: return f"M{match.group(1)}_"
 
-        # 2. Fallback: Page Title (e.g. "Module 2 Overview | Course Name")
+        # 3. Fallback: Page Title (if logic above fails)
         title_text = page.title()
         match = re.search(r"Module\s*(\d+)", title_text, re.IGNORECASE)
         if match:
              return f"M{match.group(1)}_"
 
-        # 3. Breadcrumb Fallback
-        module_text = page.locator("span.css-6ecy9b").first.inner_text()
-        match = re.search(r"MODULE\s*(\d+)", module_text, re.IGNORECASE)
-        if match:
-            return f"M{match.group(1)}_"
-
     except: pass
-    return "M1_" # Default to M1 if absolutely nothing found to avoid crash/empty
+    return "M1_" # Default
 
 def handle_automation():
     with sync_playwright() as p:
