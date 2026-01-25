@@ -62,7 +62,7 @@ Parameters are defined in the global configuration block of `coursera_stealth.py
 
 *   **Graded Instruments:** The system explicitly pauses upon detection of Graded Quizzes. Manual intervention is required for academic integrity and logic complexity reasons.
 *   **LTI Plugins:** Heuristic detection of "Ungraded Plugins" is aggressive. False positives are possible if the plugin container mimics core content structure.
-*   **Platform Variance:** DOM selectors are tightly coupled to the current frontend rendering logic. Layout changes by the vendor will necessitate selector refactoring.
+*   **Source Site Updates:** The script relies on specific CSS selectors (e.g., class names). If Coursera updates their website layout or code, these selectors WILL break, and the script will need to be updated.
 *   **OS/IO Locking:** Non-blocking input on Windows requires `msvcrt`. Fallback logic defaults to "Stay/Safe" mode if the environment lacks asynchronous input support.
 
 ## 6. Disclaimer
