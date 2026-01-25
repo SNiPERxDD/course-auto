@@ -396,18 +396,31 @@ def handle_automation():
             
             if is_plugin:
                  if "PLUGIN" not in last_log:
-                     print(f"\n🧩 UNGRADED PLUGIN DETECTED.")
-                     print("   └── Skipping external tool/survey...")
+                     print(f"\n🧩 UNGRADED PLUGIN/RESOURCE DETECTED.")
                      last_log = "PLUGIN"
                  
-                 # Attempt to Mark Complete or Next
+                 # Attempt to Mark Complete (Resource) or Next
                  try:
                      mark_btn = page.locator("button:has-text('Mark as completed')").first
-                     if mark_btn.is_visible(): 
-                         mark_btn.click()
-                         print("   └── ✅ Marked as Completed.")
-                         time.sleep(2)
                      
+                     if mark_btn.is_visible():
+                         # It's a resource/case study that requires "reading"
+                         print("   └── 📖 Resource detected (has completion button). Simulating activity...")
+                         
+                         # Grab context for the scroll function
+                         current_context = get_page_context(page)
+                         
+                         # Simulate reading for 15-30 seconds
+                         random_human_scroll(page, random.randint(15, 30), current_context)
+                         
+                         if mark_btn.is_visible():
+                             mark_btn.click()
+                             print("   └── ✅ Marked as Completed.")
+                             time.sleep(2)
+                     else:
+                         # No mark button, probably distinct tool or purely optional
+                         print("   └── Skipping external tool/survey...")
+
                      # Add to history
                      normalized_url = page.url.split('?')[0].split('#')[0]
                      visited_urls.add(normalized_url)
