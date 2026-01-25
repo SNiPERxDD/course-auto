@@ -5,7 +5,7 @@ Contributions are welcome. This project follows a high-precision "Doctrine" for 
 ## Guidelines
 
 1.  **Stealth First**: Any change must NOT increase the bot detection footprint.
-2.  **No Fluff**: Keep documentation technical and precise.
+2.  **No Bloat**: Keep documentation technical and precise.
 3.  **Cross-Platform**: Ensure changes work on both macOS and Windows (or handle fallbacks gracefully).
 
 ## Issue Reporting
