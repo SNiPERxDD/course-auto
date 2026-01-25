@@ -5,6 +5,9 @@
 ![Protocol](https://img.shields.io/badge/protocol-CDP-orange?style=flat-square)
 ![Status](https://img.shields.io/badge/status-Research_Prototype-red?style=flat-square)
 
+> [!WARNING]
+> **Use at your own risk.** This tool relies on specific CSS selectors that Coursera can change at any time. It **can and will break** without notice if the site is updated. Manual intervention is often required.
+
 ## 1. System Overview
 
 This tool implements a high-precision automation layer over an authoritative Chrome session. Unlike traditional "headless" bots which are easily fingerprinted, this system attaches to an existing, authenticated browser process using the remote debugging protocol.
