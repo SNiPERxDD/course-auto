@@ -29,9 +29,28 @@ The system requires an initialized debugging interface on the host browser.
 
 ### B. Installation
 
+**Windows (PowerShell Recommended):**
+```powershell
+# 1. Create a virtual environment (keeps your system python clean)
+python -m venv .venv
+
+# 2. Allow script execution for this session (fixes "disabled by your system" errors)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
+
+# 3. Activate the environment
+.\.venv\Scripts\Activate.ps1
+
+# 4. Install dependencies
+pip install -r requirements.txt
+playwright install chromium
+```
+
+**macOS / Linux:**
 ```bash
 git clone https://github.com/SNiPERxDD/course-auto.git
 cd course-auto
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 ```
@@ -44,9 +63,15 @@ The host browser must be started with the remote debugging port exposed. Execute
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev"
 ```
 
-**Windows:**
-```cmd
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome_dev"
+**Windows (PowerShell):**
+Try the first command. If it fails (Chrome not found), try the "Alternative x86" command.
+
+```powershell
+# Option 1: Standard 64-bit Installation
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome_dev"
+
+# Option 2: Alternative (x86) Installation
+& "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome_dev"
 ```
 
 ## 3. Execution Protocol
