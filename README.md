@@ -27,7 +27,16 @@ The system requires an initialized debugging interface on the host browser.
 *   **Dependencies:** `playwright`, `plyer`
 *   **Browser:** Google Chrome (Chromium)
 
-### B. Launch Configuration (Mandatory)
+### B. Installation
+
+```bash
+git clone https://github.com/SNiPERxDD/course-auto.git
+cd course-auto
+pip install -r requirements.txt
+playwright install chromium
+```
+
+### C. Launch Configuration (Mandatory)
 The host browser must be started with the remote debugging port exposed. Execute the following from a terminal:
 
 **macOS:**
