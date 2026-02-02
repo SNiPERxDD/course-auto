@@ -8,7 +8,8 @@ class CourseManager:
         self.course_map = course_map
         self.course_name = course_name
         sanitized = re.sub(r'[\\/*?:"<>|]', "", course_name).strip()
-        self.safe_course_name = sanitized[:250] if len(sanitized) > 250 else sanitized
+        max_len = 120 if os.name == 'nt' else 250
+        self.safe_course_name = sanitized[:max_len].strip(". ")
         self.root_dir = os.path.join("coursera_transcripts", self.safe_course_name)
         self.xml_path = os.path.join(self.root_dir, "course_content.xml")
         
