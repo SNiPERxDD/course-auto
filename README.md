@@ -1,6 +1,6 @@
 # Coursera Automation Protocol (CDP Implementation)
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.3.0-blue?style=flat-square)
 ![Python](https://img.shields.io/badge/python-3.8%2B-green?style=flat-square)
 ![Protocol](https://img.shields.io/badge/protocol-CDP-orange?style=flat-square)
 ![Status](https://img.shields.io/badge/status-Research_Prototype-red?style=flat-square)
@@ -14,8 +14,11 @@ This tool implements a high-precision automation layer over an authoritative Chr
 
 ### Core Capabilities
 1.  **Session Persistence:** Operates within the user's primary authenticated context.
-2.  **State Management:** Tracks visited URLs via `visited_history.json` to prevent redundant processing.
-3.  **Content Archival:** Extracts transcripts and reading materials with cryptographic-level integrity checks (difflib variation analysis) to ensure unique versioning.
+2.  **Course Archival Engine:** Uses `course_manager.py` to build a high-fidelity map of the course and state-track progress using a structured XML ledger (`course_content.xml`).
+3.  **Dual-Mode Operation:**
+    *   **Stealth Mode (`coursera_stealth.py`):** Monitors user activity and acts as a "Senior Hacker" co-pilot, handling navigation and archival during playback.
+    *   **Archiver Mode (`coursera_archiver.py`):** Targeted, map-driven engine that directly visits and scrapes all high-value content (Videos/Readings).
+4.  **Content Archival:** Extracts transcripts and reading materials with integrity checks to ensure unique versioning.
 4.  **Completion Logic:** 
     *   **Video:** Enforces parity with native player events (`ended`) or configured completion thresholds.
     *   **Reading:** Simulates human engagement via randomized DOM interaction events.
@@ -83,11 +86,25 @@ Try the first command. If it fails (Chrome not found), try the "Alternative x86"
 
 ## 3. Execution Protocol
 
+> [!WARNING]
+> **Data Integrity Constraint**: Do NOT run `coursera_stealth.py` and `coursera_archiver.py` simultaneously on the same course. They write to the same `course_content.xml` ledger. Simultaneous execution will cause race conditions and corrupt the database.
+
 1.  **Authentication:** Log in to the target platform on the debugging instance.
 2.  **Initialization:** Navigate to the target module entry point.
 3.  **Engagement:**
+
+    **Option A: Stealth Co-Pilot (Standard)**
+    Monitors your progress and archives as you watch.
     ```bash
     python coursera_stealth.py
+    ```
+
+    **Option B: Dedicated Archiver (Bulk)**
+    Directly navigates and scrapes all Video/Reading content defined in the course map.
+    ```bash
+    python coursera_archiver.py
+    # Optional: Force re-scrape everything
+    python coursera_archiver.py --force
     ```
 
 ## 4. Operational Configuration
@@ -97,7 +114,6 @@ Parameters are defined in the global configuration block of `coursera_stealth.py
 *   `CDP_URL`: WebSocket interface endpoint (Default: `http://localhost:9222`).
 *   `TRANSCRIPT_DIR`: Output vector for text artifacts.
 *   `VIDEO_COMPLETION_THRESHOLD`: Completion strictness percentage (0-100).
-*   `HISTORY_FILE`: Persistence storage for state tracking.
 
 ## 5. Known Limitations & Constraints
 

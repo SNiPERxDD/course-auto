@@ -6,18 +6,24 @@ import sys
 import select
 import difflib
 import json
+import urllib.parse
+import xml.etree.ElementTree as ET
 from playwright.sync_api import sync_playwright
 from plyer import notification
+from course_manager import CourseManager
+from discover_selectors_coursera import get_detailed_course_map, get_robust_course_name
 
-# --- CONFIGURATION ---
 # --- CONFIGURATION ---
 CDP_URL = "http://localhost:9222"
 TRANSCRIPT_DIR = "coursera_transcripts"
 VIDEO_COMPLETION_THRESHOLD = 100 # Percentage (0-100) to consider video watched
-HISTORY_FILE = "visited_history.json"
 
 # Suppress Playwright/Node deprecation warnings
 os.environ["NODE_OPTIONS"] = "--no-deprecation"
+
+# GLOBAL STATE TRACKERS
+current_manager = None
+last_known_course = ""
 
 def check_and_handle_modal(page):
     """Checks for and handles common modals (Honor Code, Polls) anywhere."""
@@ -44,23 +50,6 @@ def check_and_handle_modal(page):
              time.sleep(1)
     except: pass
 
-def load_history():
-    """Loads the set of visited URLs from JSON."""
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r") as f: return set(json.load(f))
-        except: pass
-    return set()
-
-def save_history(history_set):
-    """Saves the set of visited URLs to JSON."""
-    try:
-        with open(HISTORY_FILE, "w") as f: 
-            json.dump(list(history_set), f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-    except Exception as e:
-        print(f"⚠️ History Save Error: {e}")
 
 def save_content_smart(filepath, new_content):
     """Saves content, verifying correlation (>95%) to avoid overwriting distinct content."""
@@ -323,19 +312,29 @@ def handle_automation():
         print("👀 Monitoring for content...")
         last_log = ""
         last_action_log = "" # Tracks specific action states (VIDEO, READING, etc)
-        visited_urls = load_history()
         
-        # Stuck Counter to prevent End-of-Course Spam
-        stuck_on_item_counter = 0
-        last_processed_url = ""
+        # GLOBAL STATE TRACKERS (within loop context)
+        current_manager = None
+        last_known_course = ""
 
         while True:
             # STUCK DETECTION LOGIC (URL BASED)
             # Checked OUTSIDE the Try-Except block so sys.exit() works!
             try:
-                current_url_check = page.url.split('?')[0].split('#')[0]
+                # STUCK DETECTION LOGIC (URL BASED)
+                # Normalize URL: Remove query params and hash using standard urllib
+                parsed = urllib.parse.urlparse(page.url)
+                current_url_check = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
                 
-                if current_url_check == last_processed_url:
+                # FIX: Reset counter if video is actively playing (prevent false stuck trigger on long videos)
+                is_video_active = False
+                try:
+                    if page.locator("video").count() > 0:
+                        if not page.evaluate("document.querySelector('video').paused"):
+                            is_video_active = True
+                except: pass
+
+                if current_url_check == last_processed_url and not is_video_active:
                     stuck_on_item_counter += 1
                 else:
                     stuck_on_item_counter = 0
@@ -348,6 +347,26 @@ def handle_automation():
             except SystemExit: raise # Re-raise exit
             except: pass # Ignore other errors accessing page.url
 
+            # ---------------------------------------------------------
+            # 1. DYNAMIC COURSE MAPPING (Context Switcher)
+            # ---------------------------------------------------------
+            try:
+                detected_course = get_robust_course_name(page)
+                if detected_course != last_known_course and len(detected_course) > 3:
+                    print(f"\n🌍 Context Switch Detected: {detected_course}")
+                    msg = "Generating high-fidelity course map..."
+                    print(f"   └── {msg}")
+                    
+                    course_map = get_detailed_course_map(page)
+                    if course_map:
+                        current_manager = CourseManager(course_map, detected_course)
+                        last_known_course = detected_course
+                        print(f"   └── 🗺️  Map Loaded. XML Ledger: {current_manager.xml_path}")
+                    else:
+                        print("   └── ⚠️ Map generation failed.")
+            except Exception as e:
+                print(f"   └── ⚠️ Mapping error: {e}")
+
             # 1. Context Logging
             try:
                 current_context = get_page_context(page)
@@ -357,14 +376,23 @@ def handle_automation():
                     last_action_log = "" # Reset action log on new context
                      
                 # 0. History Check (State Persistence)
-                # If we have fully completed this URL before, we can skip logic or fast-track.
-                # However, user might want to re-watch. We will log it.
-                current_url = page.url.split('?')[0].split('#')[0] # Normalize: Remove query params and hash
+                # Normalize URL: Remove query params and hash using standard urllib
+                parsed = urllib.parse.urlparse(page.url)
+                current_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
                 
-                if current_url in visited_urls:
-                     if "ALREADY_VISITED" not in last_action_log:
-                         print("   └── 📜 History: Item already visited/completed.")
-                         last_action_log += "ALREADY_VISITED"
+                # Check history from Manager if available, otherwise fallback
+                if current_manager and os.path.exists(current_manager.xml_path):
+                    try:
+                        tree = ET.parse(current_manager.xml_path)
+                        for item in tree.getroot().findall(".//item"):
+                            if item.get("url") == current_url: # Use == for exact match
+                                content = item.find("content")
+                                if content is not None and content.text:
+                                    if "ALREADY_SCRAPED" not in last_action_log:
+                                         print("   └── 📜 History: Item already archived in XML.")
+                                         last_action_log += "ALREADY_SCRAPED"
+                                    break
+                    except: pass
 
             except: pass
 
@@ -433,12 +461,6 @@ def handle_automation():
             # --- CHECK COMPLETION STATUS ---
             if (is_video or is_reading or is_plugin) and not is_quiz:
                 if check_completed_status(page):
-                     # Add to history since we confirmed it's done
-                     # Normalize URL
-                     normalized_url = page.url.split('?')[0].split('#')[0]
-                     visited_urls.add(normalized_url)
-                     save_history(visited_urls)
-                     
                      user_stayed = input_with_timeout(30)
                      if not user_stayed:
                          # Skip/Navigate
@@ -480,11 +502,6 @@ def handle_automation():
                          # No mark button, probably distinct tool or purely optional
                          print("   └── Skipping external tool/survey...")
 
-                     # Add to history
-                     normalized_url = page.url.split('?')[0].split('#')[0]
-                     visited_urls.add(normalized_url)
-                     save_history(visited_urls)
-                     
                      next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
                      if next_btn.is_visible():
                          next_btn.click(force=True)
@@ -563,12 +580,13 @@ def handle_automation():
                     transcript_text = page.locator(".rc-Transcript, .rc-TranscriptHighlighter").first.inner_text()
                     
                     title = page.title().split("|")[0].strip()
-                    safe_title = re.sub(r'\W+', '_', title)
-                    prefix = get_filename_prefix(page)
-                    filepath = f"{TRANSCRIPT_DIR}/{prefix}{safe_title}_transcript.txt"
-                    os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
-                    final_path = save_content_smart(filepath, transcript_text)
-                    print(f"   └── 📝 Transcript saved: {final_path}")
+                    if current_manager:
+                        fname, ok = current_manager.save_content(page.url, transcript_text, "Transcript")
+                        print(f"   └── 💾 Archived: {fname} (XML OK: {ok})")
+                    else:
+                        safe_title = re.sub(r'\W+', '_', title)
+                        filepath = f"{TRANSCRIPT_DIR}/{safe_title}_transcript.txt"
+                        save_content_smart(filepath, transcript_text)
                 except Exception as e:
                     print(f"   └── ⚠️ Transcript scrape warning: {e}")
 
@@ -653,15 +671,9 @@ def handle_automation():
                         if prog >= (VIDEO_COMPLETION_THRESHOLD - 1): # Allow 1% buffer for rounding (e.g. 99% if 100)
                             next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
                             if next_btn.is_visible() and next_btn.is_enabled():
-                                print(f"\n   └── ✅ Video Complete (Button Enabled & >{VIDEO_COMPLETION_THRESHOLD-1}%).")
-                                
-                                # Add to history
-                                normalized_url = page.url.split('?')[0].split('#')[0]
-                                visited_urls.add(normalized_url)
-                                save_history(visited_urls)
-                                
-                                next_btn.click(force=True)
-                                break
+                                 print(f"\n   └── ✅ Video Complete (Button Enabled & >{VIDEO_COMPLETION_THRESHOLD-1}%).")
+                                 next_btn.click(force=True)
+                                 break
                                 
                     except Exception as e: 
                         # Fallback for when elements are missing/loading
@@ -673,18 +685,25 @@ def handle_automation():
                     
                     time.sleep(1)
                 
-                # Navigate (If not clicked by loop)
+                 # Navigate (If not clicked by loop)
+                navigated = False
                 try:
-                     # Only click if we didn't abort
-                     if get_page_context(page) == start_context:
-                         # Add to history (Reading assumed complete if we are moving on)
-                         normalized_url = page.url.split('?')[0].split('#')[0]
-                         visited_urls.add(normalized_url)
-                         save_history(visited_urls)
-                         
-                         next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
-                         if next_btn.is_visible(): next_btn.click(force=True)
+                    # Only click if we didn't abort
+                    if get_page_context(page) == start_context:
+                        next_btn = page.locator("button[data-testid='next-item'], button:has-text('Go to next item')").first
+                        if next_btn.is_visible(): 
+                            next_btn.click(force=True)
+                            navigated = True
                 except: pass
+
+                # Hacker Fallback: Map-based Navigation
+                if not navigated and current_manager:
+                    next_url = current_manager.get_next_url(page.url)
+                    if next_url:
+                        print(f"   └── 🧭 Map Navigate (Next URL) -> {next_url}")
+                        page.goto(next_url)
+                        time.sleep(5)
+                
                 time.sleep(5)
 
 
@@ -745,19 +764,19 @@ def handle_automation():
                 
                 print(f"   └── ⏱️ Time Required: {wait_min} minutes")
 
-                # B. Scrape Reading Content (New Feature)
+                 # B. Scrape Reading Content (Structured)
                 try:
-                    # Selector for reading body from Plan.md
                     reading_body = page.locator("div.rc-CML")
                     if reading_body.count() > 0:
                         content = reading_body.inner_text()
-                        title = page.title().split("|")[0].strip()
-                        safe_title = re.sub(r'\W+', '_', title)
-                        prefix = get_filename_prefix(page)
-                        filepath = f"{TRANSCRIPT_DIR}/{prefix}{safe_title}_reading.txt"
-                        os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
-                        final_path = save_content_smart(filepath, content)
-                        print(f"   └── 📝 Reading content saved: {final_path}")
+                        if current_manager:
+                            fname, ok = current_manager.save_content(page.url, content, "Reading")
+                            print(f"   └── 💾 Archived: {fname} (XML OK: {ok})")
+                        else:
+                            title = page.title().split("|")[0].strip()
+                            safe_title = re.sub(r'\W+', '_', title)
+                            filepath = f"{TRANSCRIPT_DIR}/{safe_title}_reading.txt"
+                            save_content_smart(filepath, content)
                 except Exception as e:
                     print(f"   └── ⚠️ Scraping failed: {e}")
 
