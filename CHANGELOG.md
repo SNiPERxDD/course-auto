@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-02-02
+### 🚀 Features
+- **Robust Transcript extraction**: Introduced a 2-stage extraction system. It first attempts UI-based scraping and automatically falls back to the "Downloads" tab to process `.txt` assets if the UI is brittle.
+- **Selector Schema Update**: Added `downloads_tab` and `transcript_download_link` to `discover_selectors_coursera.py` for automated asset discovery.
+
+## [1.4.2] - 2026-02-03
+### 🛡️ Stability Hardening
+- **Self-Healing Loop**: implemented automatic page re-acquisition if the browser connection is dropped.
+- **Fail-Safe wrappers**: Wrapped all critical handlers (Quiz, Video, Reading) in granular `try-except` blocks to prevent crashes.
+- **Fixed Next Button Logic**: Updated `get_next_button` to prioritize *visible* elements and hardened `human_click` to ignore hover failures (overlay resilience).
+- **Fixed Sidebar Scrolling**: Constrained random mouse movements to the main content area to prevent accidental sidebar navigation.
+- **Enhanced Content Detection**: Added explicit detection/skip for "Peer Assessment", "Honors Assignment", and "Review Your Peers".
+
+## [1.4.0] - 2026-02-02
+### 🚀 Features (Stealth Suite)
+- **High-Precision Organic Completion**: Randomized video completion target (97.0 - 100.0%) to evade behavioral analysis.
+- **Attention Fidgeting**: Added randomized mouse "fidget" movements during video playback and reading sessions to simulate active engagement.
+- **Human Clicking (Tactical Approach)**: Refactored all button interactions to a unified `human_click` utility with smooth glide trajectories (steps) and organic reaction times.
+
 ## [1.3.0] - 2026-02-02
 ### 🚀 Features
 - **Dedicated Targeted Archiver**: Introduced `coursera_archiver.py`, a standalone script for high-efficiency, map-driven scraping.

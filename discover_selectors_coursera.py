@@ -85,6 +85,22 @@ ELEMENTS_SCHEMA = {
             ],
             "description": "Interactive transcript area"
         },
+        "downloads_tab": {
+            "selectors": [
+                "button:has-text('Downloads')",
+                "[data-testid='downloads-tab']",
+                "a:has-text('Downloads')"
+            ],
+            "description": "Tab for downloading lesson assets"
+        },
+        "transcript_download_link": {
+            "selectors": [
+                "a:has-text('Transcript')",
+                "li:has-text('Transcript') a",
+                "a:has-text('.txt')"
+            ],
+            "description": "Link to download the transcript file"
+        },
         "reading_body": {
             "selectors": [
                 "div.rc-ReadingItemDisplay",
