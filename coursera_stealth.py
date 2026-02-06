@@ -98,7 +98,7 @@ def parse_time_to_seconds(time_str):
     return 0
 
 def get_page_context(page):
-    """Scrapes Course and Module names for logging."""
+    """Scrapes Course and Module names for logging, and includes URL for uniqueness."""
     try:
         module = page.locator("span.css-6ecy9b").first.inner_text()
     except:
@@ -108,86 +108,142 @@ def get_page_context(page):
         course = page.title().split("|")[0].strip()
     except:
         course = "Unknown Course"
-        
-    return f"📘 {course} > {module}"
-
-def random_human_scroll(page, duration_sec, initial_context):
-    """(New) Performs randomized, human-like scrolling."""
-    start_time = time.time()
     
-    # 0. Focus on Main Content to avoid Sidebar Scroll
-    # We want to hover over the reading text so wheel events affect the right area
+    # CRITICAL: Include the tail of the URL to prevent collisions between items with same titles
+    # Example: ../lecture/abc/overview vs ../supplement/xyz/overview
+    url_tail = page.url.split("/")[-2:] # Get last two segments (type + slug)
+    url_context = "/".join(url_tail)
+        
+    return f"📘 {course} > {module} [{url_context}]"
+
+# --- PHYSICS ENGINE ---
+
+def human_move(page, target_x, target_y):
+    """Moves mouse to x,y using steps to simulate velocity."""
+    # Snappier trajectories (5-15 steps) to avoid robotic jitter on short moves
+    # Auditors noted 30 steps was too slow for fidgets/jitters.
+    steps = random.randint(5, 15)
+    page.mouse.move(target_x, target_y, steps=steps)
+
+def human_scroll(page, amount, x_pos, y_pos):
+    """
+    Performs a 'smooth' scroll by breaking large delta into small ticks.
+    Also ensures mouse is OVER the content area before scrolling.
+    """
+    # 1. Move mouse to content (needed for wheel event target)
+    human_move(page, x_pos, y_pos)
+    
+    # 2. Scroll in micro-chunks (Simulate trackpad inertia)
+    remaining = amount
+    while abs(remaining) > 0:
+        # Chunk size: random between 20 and 60 pixels
+        chunk = random.randint(20, 60) if abs(remaining) > 60 else abs(remaining)
+        if remaining < 0: chunk = -chunk
+        
+        page.mouse.wheel(0, chunk)
+        remaining -= chunk
+        
+        # Micro-sleep between ticks (visual smoothness)
+        time.sleep(random.uniform(0.01, 0.05))
+
+def get_read_time_estimate(text_content):
+    """Estimates read time based on ~200 words per minute."""
+    if not text_content: return 1.0
+    word_count = len(text_content.split())
+    # 200 wpm average reading speed
+    minutes = word_count / 200
+    # Add buffer for headers/images
+    minutes = minutes * 1.2 
+    # Minimum 30 seconds
+    return max(0.5, minutes)
+
+def smart_reading_session(page, metadata_wait_min):
+    """
+    Smart reading session:
+    1. Calculates REAL reading time based on word count (200 WPM).
+    2. Performs smooth, micro-tick scrolling with trackpad inertia simulation.
+    3. Detects bottom-of-page to avoid staring at footers.
+    """
     try:
-        # Common containers for readings
-        main_content = page.locator("div.rc-CML, main, div[role='main']").first
-        if main_content.is_visible():
-            main_content.hover()
-            # Constrain mouse moves to this box
-            box = main_content.bounding_box()
-            safe_x_min = box['x'] + 20
-            safe_x_max = box['x'] + box['width'] - 20
+        # 1. Get Content Geometry and Text
+        content_el = page.locator("div.rc-CML, main, div[role='main']").first
+        if content_el.count() == 0:
+             # Fallback if no specific content container found
+             duration_sec = metadata_wait_min * 60
+             center_x, start_y = 500, 300
         else:
-            # Fallback: Assume sidebar is left < 300px
-            safe_x_min = 350
-            safe_x_max = 900
-    except:
-        safe_x_min = 350
-        safe_x_max = 900
-
-    while (time.time() - start_time) < duration_sec:
-        # 1. Check for Interruptions (Quiz)
-        if page.locator(".rc-QuizApp").count() > 0: return
-
-        # 2. Check for User Navigation (Context Change)
-        current_context = get_page_context(page)
-        if current_context != initial_context:
-            print(f"\n🛑 User navigated away! Stopping current timer.")
-            print(f"   └── Switched to: {current_context}")
-            return "NAVIGATED"
-
-        # Random scroll amount and interval (Dynamic Range)
-        # Use more variable ranges to avoid detection fingerprints
-        scroll_y = random.randint(30, 300) 
-        
-        # Direction: Mostly down (85%), occasionally up (15%)
-        direction = 1 if random.random() > 0.15 else -1
-        
-        # Check Modals during reading (Honor Code might pop up)
-        check_and_handle_modal(page)
-        
-        try:
-            # Smooth scroll simulation could be better, but we vary the steps
-            page.mouse.wheel(0, scroll_y * direction)
+            text = content_el.inner_text()
             
-            # STEALTH: Random mouse fidget *within content bounds*
-            if random.random() < 0.4: # 40% chance
-                x = random.randint(int(safe_x_min), int(safe_x_max))
-                y = random.randint(200, 700)
-                # steps=10+ ensures smooth movement instead of teleporting
-                try: page.mouse.move(x, y, steps=random.randint(10, 20))
-                except: pass
-                
-        except Exception as e:
-            # Don't fail silently; log it so we know if we lost the page
-            print(f"\n   └── ⚠️ Scroll failed (Page closed?): {e}")
-            break
+            # Calculate Real Time vs Metadata Time
+            real_time_min = get_read_time_estimate(text)
+            
+            # We cap the wait time to avoid the "10 minutes for 2 paragraphs" bot trap.
+            adjusted_min = min(metadata_wait_min, real_time_min * 2)
+            final_wait_min = max(adjusted_min, 1.0) # Always spend at least 1 min
+            
+            duration_sec = int(final_wait_min * 60)
+            print(f"   └── 🧠 AI Adjusted Time: {final_wait_min:.1f}m (Metadata: {metadata_wait_min}m, Text: {len(text.split())} words)")
+            
+            box = content_el.bounding_box()
+            center_x = box["x"] + box["width"] / 2
+            start_y = box["y"] + 100
+
+        start_time = time.time()
         
-        # Variable sleep to avoid heartbeat detection
-        time.sleep(random.uniform(1.5, 4.0))
+        # 2. Reading Loop
+        while (time.time() - start_time) < duration_sec:
+            # A. Dynamic Content Check (Handle page shifts/modals)
+            try:
+                # Recalculate box in case of layout shifts
+                current_box = content_el.bounding_box()
+                if current_box:
+                    center_x = current_box["x"] + current_box["width"] / 2
+                    # Organic jitter for hover position
+                    target_x = center_x + random.randint(-50, 50)
+                    target_y = current_box["y"] + 150
+                else:
+                    target_x, target_y = center_x, start_y
+            except:
+                target_x, target_y = center_x, start_y
+
+            # B. MODAL CHECK (Priority)
+            # We clear modals BEFORE scrolling so wheel events hit the content.
+            check_and_handle_modal(page)
+            
+            # C. Check if we hit the bottom
+            at_bottom = False
+            try:
+                at_bottom = page.evaluate("(el) => (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 120")
+            except: pass
+            
+            if at_bottom:
+                direction = -1 if random.random() > 0.3 else 0 
+            else:
+                direction = 1 if random.random() > 0.15 else -1
+
+            scroll_amount = random.randint(100, 400)
+            
+            # D. Execute Smooth Scroll (Targeting the re-calculated point)
+            human_scroll(page, scroll_amount * direction, target_x, target_y)
+            
+            # E. Termination check
+            if "Quiz" in page.title() or "Video" in page.title(): 
+                break
+            
+            # F. Natural Pause
+            time.sleep(random.uniform(2.5, 6.0))
+            
+            # G. Progress Log
+            elapsed = time.time() - start_time
+            prog = min(100, (elapsed / duration_sec) * 100)
+            print(f"\r   └── 📖 Reading: {prog:.1f}% ({int(duration_sec - elapsed)}s left)   ", end="", flush=True)
+
+        print("\n   └── ✅ Reading session complete.")
+        return "COMPLETED"
         
-        # Log progress occasionally
-        elapsed = time.time() - start_time
-        remaining = duration_sec - elapsed
-        prog = (elapsed / duration_sec) * 100
-        
-        # Reading Progress Bar
-        bar_len = 20
-        filled = int(bar_len * prog / 100)
-        bar = "█" * filled + "░" * (bar_len - filled)
-        
-        if remaining > 0:
-             print(f"\r   └── ⏳ Reading: [{bar}] {prog:.1f}% ({int(remaining)}s left)    ", end="")
-    return "COMPLETED"
+    except Exception as e:
+        print(f"\n   [WARN] Reading session interrupted: {e}")
+        return "INTERRUPTED"
 
 def input_with_timeout(timeout=30):
     """Waits for user input with a timeout (Cross-platform safe)."""
@@ -221,43 +277,43 @@ def input_with_timeout(timeout=30):
     return False # Timeout (Auto-skip)
 
 def check_completed_status(page):
-    """Checks if the current item is already marked as completed."""
+    """Checks if the current active sidebar item is already marked as completed."""
     try:
-        # 1. Get Current Title to match in Sidebar
-        current_title = page.title().split("|")[0].strip()
+        # 1. Stability Delay: Wait for sidebar to finalize transition
+        time.sleep(1.5)
         
-        # 2. Check Sidebar for this specific item having a success icon
-        # CRITICAL: Use strict matching to avoid confusing "Product" with "Product Overview"
-        # We get all items containing the text, then filter for EXACT match
-        candidates = page.locator(f"div.outline-single-item-content-wrapper", has_text=current_title).all()
+        # 2. Target the EXACT active sidebar item using accessibility + href safety
+        # We find the 'selected link' then verify its href matches the current page URL
+        # to ensure we aren't looking at the *previous* item during a fast transition.
+        active_item = page.locator('a[aria-label^="selected link"]').first
         
-        target_item = None
-        for item in candidates:
-            try:
-                # Sidebar item text usually: "Title\n10 min\n..."
-                # We want the first line (Title) to match exactly
-                item_text = item.inner_text().strip()
-                item_title = item_text.split('\n')[0].strip()
-                
-                if item_title == current_title:
-                    target_item = item
-                    break
-            except: pass
-        
-        if target_item and target_item.is_visible():
-             # Check for the Green Tick specific to this item
-             if target_item.locator("[data-testid='learn-item-success-icon']").count() > 0:
-                 print(f"   └── 🔍 Sidebar indicates '{current_title}' is Completed.")
-                 return True
+        if active_item.is_visible():
+             # Safety: Verify href matches current page path
+             active_href = active_item.get_attribute("href")
+             current_path = page.url.split(".org")[-1].split("?")[0] # Get /learn/... path
+             
+             if active_href and active_href in current_path:
+                 # Check for the Green Tick specific to this active item
+                 if active_item.locator("[data-testid='learn-item-success-icon']").count() > 0:
+                     current_title = page.title().split("|")[0].strip()
+                     print(f"   └── 🔍 Sidebar confirms '{current_title}' is already Completed.")
+                     return True
+             else:
+                 # Logic Error or Transition Race: Sidebar doesn't match current URL yet
+                 print("   └── ⚠️ Sidebar state stale, delaying completion check...")
+                 time.sleep(2)
+                 # Non-recursive retry for safety
+                 active_item = page.locator('a[aria-label^="selected link"]').first
+                 if active_item.is_visible() and active_item.locator("[data-testid='learn-item-success-icon']").count() > 0:
+                     return True
 
-        # 3. Fallbacks (Main Content)
+        # 2. Main Content Fallbacks (Check for "Completed" markers in the main view)
         if page.locator("main h3", has_text="Completed").count() > 0: return True
         if page.locator("main [data-testid='learn-item-success-icon']").count() > 0: return True
         
-        # 4. Check "Mark as completed" button absence for Readings
+        # 3. Check "Mark as completed" button absence for Readings
         if page.locator(".reading-title").count() > 0:
              # If title exists but button doesn't, it's likely done.
-             # But be careful of loading states. We assume page is loaded.
              if page.locator("button:has-text('Mark as completed')").count() == 0:
                  return True
 
@@ -313,29 +369,26 @@ def get_filename_prefix(page):
 
 def human_click(page, locator, force=True, reaction_range=(0.4, 0.9)):
     """
-    Performs a human-like click: 
-    1. Smooth Mouse Glide (Steps) to localized button coordinate
-    2. Reaction/Thinking Pause
-    3. Final Click
+    Performs a human-like click with trajectory.
     """
     try:
-        if not locator.is_visible(): return False
+        if not locator.is_visible():
+            locator.wait_for(state="visible", timeout=3000)
         
-        # 1. Smooth Approach (Best Effort)
-        try:
-            # Ensure element is in view
-            locator.scroll_into_view_if_needed(timeout=2000)
-            
-            # Hover to trigger states (don't fail on this)
-            locator.hover(force=force, timeout=2000)
-            
-            # Small random pause for "thought"
-            time.sleep(random.uniform(*reaction_range))
-        except: 
-            pass # Continue to click even if hover/scroll fought back
+        # 1. Calculate target click point
+        box = locator.bounding_box()
+        if not box: return False
         
-        # 2. The Click (Priority)
-        # Force click ensures we don't get blocked by minimal overlays
+        # Center point + random organic jitter
+        target_x = box["x"] + box["width"] / 2 + random.randint(-5, 5)
+        target_y = box["y"] + box["height"] / 2 + random.randint(-5, 5)
+        
+        # 2. Smooth Glide to target (No Teleport!)
+        human_move(page, target_x, target_y)
+        
+        # 3. Final hover and click with reaction delay
+        locator.hover(force=force)
+        time.sleep(random.uniform(*reaction_range))
         locator.click(force=force)
         return True
     except:
@@ -498,10 +551,14 @@ def handle_automation():
                     stuck_on_item_counter = 0
                     last_processed_url = current_url_check
 
-                if stuck_on_item_counter > 5: # ~5 loops without URL change
-                     print("\n🛑 End of Course or Stuck detected (No Next Item).")
-                     print("   └── Script exiting quietly to prevent log spam.")
-                     sys.exit(0)
+                if stuck_on_item_counter > 20: # ~1-2 mins without URL change
+                     print("\n🛑 Stuck detected (No Next Item / Navigation Blocked).")
+                     print("   └── Attempting page recovery...")
+                     try: page.reload()
+                     except: pass
+                     stuck_on_item_counter = 0
+                     time.sleep(5)
+                     continue
             except SystemExit: raise # Re-raise exit
             except: pass # Ignore other errors accessing page.url
 
@@ -672,7 +729,8 @@ def handle_automation():
                          current_context = get_page_context(page)
                          
                          # Simulate reading for 15-30 seconds
-                         random_human_scroll(page, random.randint(15, 30), current_context)
+                         # Simulating a human scrolling/fidgeting while watching
+                         smart_reading_session(page, 0.5) # Short fidget session
                          
                          if mark_btn.is_visible():
                              mark_btn.click()
@@ -761,6 +819,8 @@ def handle_automation():
                     
                     # Capture start context for navigation check
                     start_context = get_page_context(page)
+                    start_url = page.url
+                    navigated = False
 
                     # A. Extract Transcript (Robust 2-Stage)
                     transcript_text, method = try_extract_transcript(page)
@@ -876,8 +936,9 @@ def handle_automation():
                                 next_btn = get_next_button(page)
                                 if next_btn.is_visible() and next_btn.is_enabled():
                                      print(f"\n   └── ✅ Video Complete (Button Enabled & >{completion_target-1}%).")
-                                     human_click(page, next_btn)
-                                     break
+                                     if human_click(page, next_btn):
+                                         navigated = True
+                                         break
                                     
                         except Exception as e: 
                             # Fallback for when elements are missing/loading
@@ -889,26 +950,32 @@ def handle_automation():
                         
                         time.sleep(1)
                     
-                     # Navigate (If not clicked by loop)
-                    navigated = False
-                    try:
-                        # Only click if we didn't abort
-                        if get_page_context(page) == start_context:
-                            next_btn = get_next_button(page)
-                            
-                            # Try Human Click
-                            if next_btn.is_visible() and human_click(page, next_btn, reaction_range=(0.6, 1.4)):
-                                navigated = True
-                    except: pass
+                     # Final Navigation (If not clicked by progress loop)
+                    if not navigated:
+                        try:
+                            # Guard: Only click if context hasn't changed yet
+                            time.sleep(1)
+                            # CRITICAL: Verify context AND URL have not changed to prevent hopping duplicate titles
+                            if get_page_context(page) == start_context and page.url == start_url:
+                                next_btn = get_next_button(page)
+                                
+                                # Stricter check for visibility and enablement
+                                if next_btn.is_visible() and next_btn.is_enabled():
+                                    if human_click(page, next_btn, reaction_range=(0.8, 1.8)):
+                                        navigated = True
+                        except: pass
 
-                    # Hacker Fallback: Map-based Navigation
+                    # Hacker Fallback: Map-based Navigation (ONLY if UI nav actually failed)
                     if not navigated and current_manager:
-                        print("   └── ⚠️ Video Nav failed. Attempting Map Fallback...")
-                        next_url = current_manager.get_next_url(page.url)
-                        if next_url:
-                            print(f"   └── 🧭 Map Navigate -> {next_url}")
-                            page.goto(next_url)
-                            time.sleep(5)
+                        # Final check: Did we actually change page in those 1-2 seconds?
+                        time.sleep(2)
+                        if get_page_context(page) == start_context and page.url == start_url:
+                            print("   └── ⚠️ Video Nav failed. Attempting Map Fallback...")
+                            next_url = current_manager.get_next_url(page.url)
+                            if next_url:
+                                print(f"   └── 🧭 Map Navigate -> {next_url}")
+                                page.goto(next_url)
+                                time.sleep(5)
                     
                     time.sleep(5)
                 except Exception as e:
@@ -920,6 +987,8 @@ def handle_automation():
             elif is_reading:
                 try:
                     start_context = get_page_context(page)
+                    start_url = page.url
+                    navigated = False
                     if "READING" not in last_action_log:
                         print(f"\n📖 READING DETECTED.")
                         last_action_log += "READING"
@@ -995,11 +1064,12 @@ def handle_automation():
                     except Exception as e:
                         print(f"   └── ⚠️ Scraping failed: {e}")
 
-                    # C. Human Scrolling (With Navigation Check)
-                    status = random_human_scroll(page, wait_sec, start_context)
+                    # C. Smart Reading Session (Physics-based)
+                    # This replaces the old random_human_scroll
+                    status = smart_reading_session(page, wait_min)
                     
-                    if status == "NAVIGATED":
-                        continue # Restart main loop
+                    if status == "INTERRUPTED":
+                        continue # Restart main loop check
                     
                     # D. Mark Complete
                     try:
@@ -1011,11 +1081,26 @@ def handle_automation():
                             print("\n   └── ✅ Finished.")
                     except: pass
                     
-                    # Navigate
+                     # Final Navigation (Harden against duplicate titles)
                     try:
-                         next_btn = get_next_button(page)
-                         if next_btn.is_visible(): human_click(page, next_btn)
+                         time.sleep(1)
+                         if get_page_context(page) == start_context and page.url == start_url:
+                             next_btn = get_next_button(page)
+                             if next_btn.is_visible() and next_btn.is_enabled(): 
+                                 if human_click(page, next_btn, reaction_range=(0.8, 1.8)):
+                                     navigated = True
                     except: pass
+
+                    # Hacker Fallback: Map-based Navigation
+                    if not navigated and current_manager:
+                        time.sleep(2)
+                        if get_page_context(page) == start_context and page.url == start_url:
+                            print("   └── ⚠️ Reading Nav failed. Attempting Map Fallback...")
+                            next_url = current_manager.get_next_url(page.url)
+                            if next_url:
+                                print(f"   └── 🧭 Map Navigate -> {next_url}")
+                                page.goto(next_url)
+                                time.sleep(5)
                     time.sleep(5)
                 except Exception as e:
                      print(f"   └── ⚠️ Reading handler error: {e}")

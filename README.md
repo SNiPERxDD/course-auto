@@ -1,6 +1,6 @@
 # Coursera Automation Protocol (CDP Implementation)
 
-![Version](https://img.shields.io/badge/version-1.4.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.4.2-blue?style=flat-square)
 ![Python](https://img.shields.io/badge/python-3.8%2B-green?style=flat-square)
 ![Protocol](https://img.shields.io/badge/protocol-CDP-orange?style=flat-square)
 ![Status](https://img.shields.io/badge/status-Research_Prototype-red?style=flat-square)

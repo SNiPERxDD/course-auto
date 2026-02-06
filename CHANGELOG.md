@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.0] - 2026-02-03
+### 💎 Platinum Edition (Verification Suite)
+- **Rapid Diagnostic Harness**: Created `run_tests.py`, a high-speed verification suite using **Monkey Patching** and **Dependency Injection**. It compresses 10-minute automated cycles into <30-second logic checks.
+- **Isolated Testing (Sandboxing)**: Verification now runs in a dedicated `test_artifacts` environment, ensuring data integrity for the production `coursera_transcripts` folder.
+- **JS Injection Verification**: Test harness validates video handler speed-hacks and physics engine stability in isolation.
+
+## [2.0.0] - 2026-02-03
+### 🏆 Gold Master Edition
+- **Adaptive Physics Engine**: Refined `human_move` to use dynamic trajectory steps (5-15) based on Auditor feedback, eliminating robotic jitter on short movements.
+- **Race Condition Shield**: Implemented Double-Click Guards in both Video and Reading handlers. Navigation logic now performs context-verification and visibility checks BEFORE fallback clicks.
+- **Modal-Resilient Scrolling**: Upgraded `smart_reading_session` to re-calculate content coordinates dynamically and clear modals BEFORE each scroll event.
+- **Enhanced Loop Stability**: Refined "stuck" recovery with explicit page reloads and increased tolerance for heavy UI overlays.
+
+## [1.5.0] - 2026-02-03
+### 🚀 Features (Physics Engine Upgrade)
+- **Human Physics Helpers**: Implemented `human_move` and `human_scroll` to eliminate bot-like "teleportation" using trajectory-based cursor motion and inertial micro-scrolling.
+- **Content-Aware Reading**: Introduced `smart_reading_session` which calculates real reading durations based on word count (WPM) and automatically detects once the content bottom is reached.
+- **Hardened Loop Stability**: Increased "stuck" tolerance to 20 loops (approx 3 mins) to handle UI lag/overlays, with an added auto-reload recovery mechanism.
+
 ## [1.4.1] - 2026-02-02
 ### 🚀 Features
 - **Robust Transcript extraction**: Introduced a 2-stage extraction system. It first attempts UI-based scraping and automatically falls back to the "Downloads" tab to process `.txt` assets if the UI is brittle.

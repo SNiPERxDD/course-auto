@@ -154,32 +154,78 @@ def load_config():
         except: pass
     return {}
 
-def get_robust_module_name(page):
+def get_page_metadata(page):
     """
-    Hierarchical module name detection to avoid false positives.
-    Uses expanded accordion first, then page text search.
+    Finds the active item in the sidebar by URL and returns (Module, Item, Subtext).
+    This is much more accurate than generic title parsing.
     """
     try:
-        # 1. Primary: The expanded accordion header in the sidebar
-        header = page.locator("button.cds-AccordionHeader-button[aria-expanded='true'] span").first
-        if header.count() > 0 and header.is_visible():
-            text = header.inner_text().strip()
-            if text and "module" in text.lower(): return text
+        # 1. Normalize current URL for matching
+        current_url = page.url.split('?')[0].split('#')[0]
+        
+        # 2. Search sidebar links for this URL
+        links = page.locator("a[href*='/learn/']").all()
+        for link in links:
+            href = link.get_attribute("href")
+            if not href: continue
+            
+            # Match part of URL (handling relative vs absolute)
+            if "/learn/" in href and (href in current_url or current_url.endswith(href)):
+                # Found the active sidebar item!
+                # Extract text lines safely
+                full_text = link.inner_text().strip()
+                lines = [l.strip() for l in full_text.split('\n') if l.strip()]
+                item_title = lines[0] if lines else "Unknown Item"
+                subtext = " | ".join(lines[1:]) if len(lines) > 1 else ""
+                
+                # Find parent Module
+                module_name = "Unknown Module"
+                
+                # --- STRATEGY 1: CACHED MAP LOOKUP (Highest Precision) ---
+                if hasattr(get_sidebar_targets, "_course_map"):
+                    for m_name, lessons in get_sidebar_targets._course_map.items():
+                        for _, _, l_href, _ in lessons:
+                            if l_href and (l_href in current_url or current_url.endswith(l_href)):
+                                module_name = m_name
+                                break
+                        if module_name != "Unknown Module": break
 
-        # 2. Fallback: Specific breadcrumb or header patterns
-        patterns = [
-            "nav[aria-label='Breadcrumbs'] li:last-child",
-            "h2.cds-119",
-            "span:has-text('Module')"
-        ]
-        for p in patterns:
-            loc = page.locator(p).first
-            if loc.count() > 0 and loc.is_visible():
-                text = loc.inner_text().strip()
-                if text and len(text) > 3: return text
+                # --- STRATEGY 2: BREADCRUMBS ---
+                if module_name == "Unknown Module":
+                    try:
+                        bc = page.locator("[aria-label*='readcrumb'] li").all()
+                        if len(bc) >= 2:
+                            text = bc[-2].inner_text().strip()
+                            if text and len(text) > 3 and "course" not in text.lower():
+                                module_name = text
+                    except: pass
 
+                # --- STRATEGY 3: JS SIDEBAR TRAVERSAL ---
+                if module_name == "Unknown Module":
+                    try:
+                        module_name = page.evaluate("""(el) => {
+                            let sidebar = el.closest('nav') || document.querySelector('div.rc-ModuleOutline') || document;
+                            let headers = Array.from(sidebar.querySelectorAll('button.cds-AccordionHeader-button, h1, h2, h3, h4, [role="heading"]'));
+                            let elRect = el.getBoundingClientRect();
+                            let best = null;
+                            let minDiff = Infinity;
+                            for (let h of headers) {
+                                let hRect = h.getBoundingClientRect();
+                                if (hRect.top < elRect.top) {
+                                    let diff = elRect.top - hRect.top;
+                                    if (diff < minDiff) { minDiff = diff; best = h; }
+                                }
+                            }
+                            return best ? best.innerText.split('\\n')[0].trim() : 'Course Overview';
+                        }""", link)
+                    except: pass
+                
+                return module_name, item_title, subtext
     except: pass
-    return "Unknown Module"
+    
+    # Fallback to Title parsing if sidebar fails
+    title = page.title().split("|")[0].strip()
+    return "Unknown Module", title, ""
 
 def find_element_in_frames(page, selector):
     """Searches main page and all iframes for a selector."""
@@ -379,30 +425,40 @@ def get_detailed_course_map(page):
                 
                 full_text = item.inner_text().strip()
                 
-                # If we got no text, it might be lazy loading - scroll it and try once more
+                # If we got no text, it might be lazy loading - scroll and use more aggressive textContent
                 if not full_text:
                     try:
                         item.scroll_into_view_if_needed()
-                        time.sleep(0.5)
-                        full_text = item.inner_text().strip()
+                        time.sleep(0.3)
+                        # textContent is more reliable than inner_text for lazy elements
+                        full_text = item.evaluate("el => el.textContent").strip()
                     except: pass
 
                 lines = [l.strip() for l in full_text.split('\n') if l.strip()]
                 
-                text = lines[0] if lines else "Untitled"
+                text = lines[0] if lines else "Untitled Item (Wait For Load)"
                 subtext = lines[1].lower() if len(lines) > 1 else ""
                 
                 # Identify type: Prioritize visible subtext, then fallback to label
+                # Identify type: Prioritize visible subtext, then fallback to label
                 item_type = "UNKNOWN"
-                if "video" in subtext or "video" in label: 
+                
+                # Check specifics FIRST
+                if "review your peers" in subtext or "review your peers" in label:
+                    item_type = "REVIEW_PEERS"
+                elif "peer" in subtext or "peer" in label or "honors" in subtext or "honors" in label: 
+                    item_type = "PEER_REVIEW"
+                
+                elif "video" in subtext or "video" in label: 
                     item_type = "VIDEO"
                 elif "reading" in subtext or "reading" in label: 
                     item_type = "READING"
+                # Generic checks LAST
                 elif "quiz" in subtext or "quiz" in label or "assignment" in subtext or "assignment" in label: 
                     item_type = "QUIZ"
                 elif "plugin" in subtext or "lab" in subtext or "plugin" in label or "lab" in label: 
                     item_type = "LAB"
-                elif "peer" in subtext or "peer" in label: 
+                elif "assignment" in subtext or "assignment" in label:
                     item_type = "ASSIGNMENT"
                 
                 # Check for filler in title or subtext
@@ -466,7 +522,14 @@ def print_course_map(course_map, course_title="Course"):
             v_bar = "    " if is_last_m else "║   "
             l_prefix = "└──" if is_last_l else "├──"
             
-            icon = "🎬" if itype == "VIDEO" else "📖" if itype == "READING" else "📝" if itype == "QUIZ" else "💻" if itype == "LAB" else "🤝" if itype == "ASSIGNMENT" else "❓"
+            icon = "❓"
+            if itype == "VIDEO": icon = "🎬"
+            elif itype == "READING": icon = "📖"
+            elif itype == "QUIZ": icon = "📝"
+            elif itype == "LAB": icon = "💻" 
+            elif itype == "ASSIGNMENT": icon = "🤝"
+            elif itype == "PEER_REVIEW": icon = "🗳️"
+            elif itype == "REVIEW_PEERS": icon = "👁️"
             
             # Print title and append duration if found
             line_content = f"{title[:50]}"
@@ -486,7 +549,10 @@ def get_sidebar_targets(page, force_print=False):
     course_map = get_detailed_course_map(page)
     course_title = get_robust_course_name(page)
     
-    # 2. Print summary if forced or's first time
+    # 2. Cache map for metadata lookup
+    setattr(get_sidebar_targets, "_course_map", course_map)
+    
+    # 3. Print summary if forced or's first time
     if force_print or not hasattr(get_sidebar_targets, "_printed"):
         print_course_map(course_map, course_title)
         setattr(get_sidebar_targets, "_printed", True)
@@ -539,11 +605,14 @@ def discover_selectors(page, existing_config, discovered_types):
         if loc.count() > 0: course_name_val = loc.inner_text().strip() or loc.get_attribute("title")
     except: pass
     
-    module_name_val = get_robust_module_name(page)
+    module_name_val, item_name_val, subtext_val = get_page_metadata(page)
     page_type = detect_page_type(page)
     
     print(f"COURSE: {course_name_val}")
     print(f"MODULE: {module_name_val}")
+    print(f"ITEM:   {item_name_val}")
+    if subtext_val:
+        print(f"INFO:   {subtext_val}")
     print(f"TYPE:   {page_type}")
 
     # Update discovered checklist early to ensure exit logic progress
@@ -554,6 +623,12 @@ def discover_selectors(page, existing_config, discovered_types):
     pending_updates = False
 
     for category, elements in ELEMENTS_SCHEMA.items():
+        # FILTER: Only scan relevant categories for the current page type
+        # This prevents "Video Player" text being detected as "Reading Body" etc.
+        if page_type == "VIDEO" and category not in ["video_player", "course_metadata", "navigation"]: continue
+        if page_type == "READING" and category not in ["content", "course_metadata", "navigation"]: continue
+        if page_type in ["QUIZ", "ASSIGNMENT", "PEER_REVIEW", "REVIEW_PEERS"] and category not in ["quiz", "course_metadata", "navigation"]: continue
+        
         current_findings[category] = existing_config.get(category, {})
         category_header_printed = False
         
