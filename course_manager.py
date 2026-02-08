@@ -13,6 +13,10 @@ class CourseManager:
         self.root_dir = os.path.join("coursera_transcripts", self.safe_course_name)
         self.xml_path = os.path.join(self.root_dir, "course_content.xml")
         
+        # URL-based tracking: (normalized_url, content_type) -> save_count
+        # This prevents collisions when the same submodule has multiple content types
+        self.url_save_history = {}
+        
         # Ensure directories exist
         os.makedirs(self.root_dir, exist_ok=True)
         self._init_xml()
@@ -68,18 +72,28 @@ class CourseManager:
     def save_content(self, current_url, content_text, content_type):
         """
         Saves content to TXT and updates the XML database.
+        Each unique URL can only be saved once to TXT file.
+        But XML dump file is ALWAYS updated with the content.
         """
         m_idx, l_idx, title, m_name = self.resolve_location(current_url)
         
-        # 1. Save TXT File (Grouped)
-        prefix = f"M{m_idx:02d}_L{l_idx:02d}"
-        filename = f"{prefix}_{title}_{content_type}.txt"
-        file_path = os.path.join(self.root_dir, filename)
+        # Normalize URL for link-based tracking
+        norm_url = current_url.replace("https://www.coursera.org", "").split("?")[0].split("#")[0]
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content_text)
-            
-        # 2. Update XML
+        # 1. Save TXT File (only once per URL)
+        prefix = f"M{m_idx:02d}_L{l_idx:02d}"
+        base_filename = f"{prefix}_{title}_{content_type}.txt"
+        filename = base_filename
+        
+        # Check if this URL has already been archived to TXT
+        if norm_url not in self.url_save_history:
+            file_path = os.path.join(self.root_dir, filename)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content_text)
+            # Mark this URL as saved
+            self.url_save_history[norm_url] = True
+        
+        # 2. ALWAYS Update XML dump file (even if TXT already existed)
         try:
             tree = ET.parse(self.xml_path)
             root = tree.getroot()
@@ -95,6 +109,7 @@ class CourseManager:
                     if content_node is None:
                         content_node = ET.SubElement(item, "content")
                     
+                    # Always update with latest content
                     content_node.text = content_text
                     found = True
                     break

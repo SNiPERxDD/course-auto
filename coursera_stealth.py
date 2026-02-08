@@ -167,10 +167,13 @@ def smart_reading_session(page, metadata_wait_min):
     try:
         # 1. Get Content Geometry and Text
         content_el = page.locator("div.rc-CML, main, div[role='main']").first
-        if content_el.count() == 0:
+        content_el_valid = content_el.count() > 0
+        
+        if not content_el_valid:
              # Fallback if no specific content container found
              duration_sec = metadata_wait_min * 60
              center_x, start_y = 500, 300
+             print(f"   └── ⚠️ Content element not found. Using default scroll area.")
         else:
             text = content_el.inner_text()
             
@@ -194,13 +197,16 @@ def smart_reading_session(page, metadata_wait_min):
         while (time.time() - start_time) < duration_sec:
             # A. Dynamic Content Check (Handle page shifts/modals)
             try:
-                # Recalculate box in case of layout shifts
-                current_box = content_el.bounding_box()
-                if current_box:
-                    center_x = current_box["x"] + current_box["width"] / 2
-                    # Organic jitter for hover position
-                    target_x = center_x + random.randint(-50, 50)
-                    target_y = current_box["y"] + 150
+                # Only try to recalculate if we have a valid content element
+                if content_el_valid:
+                    current_box = content_el.bounding_box()
+                    if current_box:
+                        center_x = current_box["x"] + current_box["width"] / 2
+                        # Organic jitter for hover position
+                        target_x = center_x + random.randint(-50, 50)
+                        target_y = current_box["y"] + 150
+                    else:
+                        target_x, target_y = center_x, start_y
                 else:
                     target_x, target_y = center_x, start_y
             except:
@@ -651,8 +657,9 @@ def handle_automation():
                     
                     # Check for "Peer-graded Assignment", "Case Study", "Honors Assignment"
                     # Also "Review Your Peers" which often appears in 3-part peer reviews
+                    # BUT: Don't flag as plugin if it's actually a video
                     title_lower = page.title().lower()
-                    if any(x in title_lower for x in ["peer-graded", "peer assessment", "case study", "honors assignment", "review your peers"]):
+                    if not is_video and any(x in title_lower for x in ["peer-graded", "peer assessment", "case study", "honors assignment", "review your peers"]):
                         is_assignment = True
                         is_plugin = True # Reuse plugin skip logic for now
                 except: pass
@@ -676,9 +683,11 @@ def handle_automation():
                 time.sleep(2)
                 continue
 
-            # --- CHECK COMPLETION STATUS ---
+            # --- CHECK COMPLETION STATUS (Skip if no user override needed) ---
+            # NOTE: We skip the completion check for VIDEOS since we always want to capture transcripts.
+            # For readings/plugins, we check if already completed and skip accordingly.
             try:
-                if (is_video or is_reading or is_plugin) and not is_quiz:
+                if (is_reading or is_plugin) and not is_quiz and not is_video:
                     if check_completed_status(page):
                          user_stayed = input_with_timeout(30)
                          if not user_stayed:
